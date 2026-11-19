@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Local settings, reminders and desktop countdown",
+  "windows": ["main", "reminder", "countdown"],
+  "permissions": ["core:default"]
+}
