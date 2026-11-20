@@ -49,7 +49,7 @@ const nextLabel = computed(() =>
 );
 const countdown = computed(() => {
   const next = snapshot.value?.nextAt;
-  if (!next) return "安心享受自己的时间";
+  if (!next) return snapshot.value?.phase === "finished" ? "今天没有后续提醒" : "安心享受自己的时间";
   const minutes = Math.ceil((next * 1000 - now.value) / 60000);
   if (minutes <= 0) return "到点了，准备告别今天的工作";
   return minutes >= 60
@@ -169,8 +169,7 @@ onUnmounted(() => {
     <section class="hero" :data-phase="workClock.state" aria-label="今日计时">
       <div class="hero-copy">
         <span class="eyebrow"><Icon name="sun" :size="15" /> 给生活，留一点时间</span>
-        <h2>今天，几点下班？</h2>
-        <p>下班前看剩余时间，到点后看已经加班多久。</p>
+        <h2>今日计时</h2>
       </div>
       <div class="hero-art" aria-hidden="true">
       </div>
@@ -188,9 +187,7 @@ onUnmounted(() => {
         <div class="section-heading">
           <div>
             <h2><Icon name="clock" /> 提醒安排</h2>
-            <p>按照你的节奏，安排一天的收尾。</p>
           </div>
-          <span class="small-label">每日循环</span>
         </div>
         <div class="time-fields">
           <label
@@ -211,7 +208,6 @@ onUnmounted(() => {
         <div class="interval-row">
           <div>
             <label for="interval">重复提醒间隔</label>
-            <p>到点后，每隔一段时间再提醒一次</p>
           </div>
           <div class="number-field">
             <input
@@ -252,35 +248,29 @@ onUnmounted(() => {
           required
           placeholder="写一句想在下班时对自己说的话…"
         />
-        <div class="toggle-row">
-          <span class="option-icon"><Icon name="volume" /></span>
-          <div>
+        <div class="settings-toggles">
+          <div class="toggle-row">
+            <span class="option-icon"><Icon name="volume" /></span>
             <label for="sound">提示音</label>
-            <p>提醒出现时，播放轻提示音</p>
+            <input
+              id="sound"
+              v-model="settings.sound"
+              type="checkbox"
+              class="switch"
+              role="switch"
+            />
           </div>
-          <input
-            id="sound"
-            v-model="settings.sound"
-            type="checkbox"
-            class="switch"
-            role="switch"
-            aria-label="提示音"
-          />
-        </div>
-        <div class="toggle-row">
-          <span class="option-icon"><Icon name="power" /></span>
-          <div>
+          <div class="toggle-row">
+            <span class="option-icon"><Icon name="power" /></span>
             <label for="autostart">登录后自动启动</label>
-            <p>静静待在托盘里，不打开设置窗口</p>
+            <input
+              id="autostart"
+              v-model="settings.autostart"
+              type="checkbox"
+              class="switch"
+              role="switch"
+            />
           </div>
-          <input
-            id="autostart"
-            v-model="settings.autostart"
-            type="checkbox"
-            class="switch"
-            role="switch"
-            aria-label="登录后自动启动"
-          />
         </div>
         <div class="form-footer">
           <span :class="{ unsaved: dirty }"
@@ -299,7 +289,6 @@ onUnmounted(() => {
             <h3>桌面悬浮窗</h3>
             <Icon name="clock" :size="19" />
           </div>
-          <p>置顶显示下班倒计时和加班时间。</p>
           <button
             class="secondary full-width"
             :disabled="busy || !snapshot"
@@ -325,14 +314,13 @@ onUnmounted(() => {
               snapshot?.paused ? "恢复今日提醒" : "今天不再提醒"
             }}
           </button>
-          <p class="reset-note">暂停仅对今天生效，明天自动恢复</p>
         </section>
         <section class="preview-card">
           <div class="section-heading">
-            <h3>提前听一声下班</h3>
+            <h3>预览下班提醒</h3>
             <Icon name="bell" :size="19" />
           </div>
-          <p>预览下班时会收到的提醒。</p>
+          <p>提醒显示 15 秒后自动收起。</p>
           <button
             class="secondary full-width"
             :disabled="busy || !connected"
@@ -346,7 +334,7 @@ onUnmounted(() => {
     <footer class="page-footer">
       <span
         ><Icon name="info" :size="14" />关闭窗口后，提醒仍在托盘中运行。</span
-      ><span>下班啦 <span class="footer-dot">·</span> v0.4.0</span>
+      ><span>下班啦 <span class="footer-dot">·</span> v0.4.3</span>
     </footer>
     <Transition name="toast"
       ><div v-if="toast" class="toast-message" role="status">

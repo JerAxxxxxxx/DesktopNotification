@@ -12,11 +12,14 @@ const failed = ref(false);
 const clock = computed(() => settings.value && getWorkCountdown(settings.value, now.value));
 const caption = computed(() => failed.value ? "悬浮窗操作失败" :
   clock.value?.state === "overtime" ? "已加班" :
+    clock.value?.state === "soon" ? "快下班了" :
     clock.value?.state === "dayOff" ? "休息日" : "距离下班");
 let ticker: ReturnType<typeof setInterval>;
 let unlisten: UnlistenFn | undefined;
 let dragFrame: number | undefined;
 let grip: { id: number; x: number; y: number; screenX: number; screenY: number } | undefined;
+let dragged = false;
+let previousClickWasClean = false;
 
 async function refresh() {
   now.value = Date.now();
@@ -30,6 +33,7 @@ async function refresh() {
 
 function beginDrag(event: PointerEvent) {
   if (!isTauri() || event.button !== 0 || grip) return;
+  dragged = false;
   (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
   grip = {
     id: event.pointerId,
@@ -43,6 +47,7 @@ function beginDrag(event: PointerEvent) {
 function moveDrag(event: PointerEvent) {
   if (!grip || grip.id !== event.pointerId) return;
   if (event.screenX === grip.screenX && event.screenY === grip.screenY) return;
+  dragged = true;
   const { x, y } = grip;
   grip.screenX = event.screenX;
   grip.screenY = event.screenY;
@@ -57,6 +62,21 @@ function finishDrag(event: PointerEvent) {
   if (grip?.id !== event.pointerId) return;
   if (event.type === "pointerup") moveDrag(event);
   grip = undefined;
+}
+
+function clickGrip(event: MouseEvent) {
+  const cleanClick = !dragged;
+  if (event.detail === 2 && previousClickWasClean && cleanClick) void openSettings();
+  previousClickWasClean = cleanClick;
+}
+
+async function openSettings() {
+  if (!isTauri()) return;
+  try {
+    await invoke("open_settings");
+  } catch {
+    failed.value = true;
+  }
 }
 
 async function hide() {
@@ -94,6 +114,11 @@ onUnmounted(() => {
   >
     <div
       class="float-grip"
+      tabindex="0"
+      title="双击打开设置"
+      aria-label="计时区域，双击或按回车打开设置"
+      @click.left="clickGrip"
+      @keydown.enter.prevent="openSettings"
       @pointerdown="beginDrag"
       @pointermove="moveDrag"
       @pointerup="finishDrag"
@@ -134,6 +159,11 @@ html.countdown-mode {
   --float-accent: #ffd0a6;
   --float-glow: #694340;
 }
+.float-clock[data-phase="soon"] {
+  --float-accent: #a9f2d9;
+  --float-glow: #27645b;
+  background: radial-gradient(ellipse at 5% -70%, var(--float-glow) 25%, #16312f 80%);
+}
 .float-clock[data-phase="dayOff"] {
   --float-accent: #b5e8ce;
   --float-glow: #37585c;
@@ -148,6 +178,7 @@ html.countdown-mode {
   padding: 0 24px 0 8px;
 }
 .float-grip:active { cursor: grabbing; }
+.float-grip:focus-visible { outline: 2px solid var(--float-accent); outline-offset: -3px; border-radius: 7px; }
 .float-symbol {
   display: grid;
   place-items: center;

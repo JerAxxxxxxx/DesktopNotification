@@ -14,4 +14,4 @@
 - 提交改动时说明变化和验证范围。修改置顶、拖动、托盘、自动启动或提醒窗口时，尽量用 Windows 桌面复测；浏览器预览无法验证这些系统行为。
 - 保留 npm 和 Cargo 锁文件。依赖、构建产物、本机临时文件和历史发布包不进入源码。发布免安装 EXE 时，附上使用说明、校验值和 [MIT 许可证](LICENSE)。
 
-Windows 自动检查配置位于 `.github/workflows/check.yml`，只运行测试和构建，不会发布产物。
+Windows 自动检查配置位于 `.github/workflows/check.yml`。发布时先统一应用版本号，在对应提交上创建 `v主版本.次版本.修订号` 标签并推送。标签触发测试、Windows x64 免安装构建和 GitHub Release 发布。附件包含 EXE、SHA-256 校验文件、使用说明和 MIT 许可证。

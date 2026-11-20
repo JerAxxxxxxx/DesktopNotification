@@ -57,15 +57,15 @@ button svg {
   flex-shrink: 0;
 }
 .app-shell {
-  max-width: 1100px;
-  padding: 22px 34px 16px;
+  max-width: 940px;
+  padding: 16px 22px 12px;
   margin: auto;
 }
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 .brand {
   display: flex;
@@ -73,8 +73,8 @@ button svg {
   gap: 12px;
 }
 .brand-symbol {
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
   display: grid;
   place-items: center;
   border-radius: 15px;
@@ -123,7 +123,7 @@ button svg {
 }
 .hero {
   --hero-accent: #dbcbff;
-  padding: 20px 26px;
+  padding: 9px 19px;
   background: linear-gradient(112deg, #2c2347 15%, #44315e 57%, #6c5284);
   border: 1px solid #614f7a;
   border-radius: 20px;
@@ -131,12 +131,12 @@ button svg {
   color: #fff9ff;
   position: relative;
   overflow: hidden;
-  min-height: 126px;
+  min-height: 82px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 18px;
+  margin-bottom: 12px;
 }
 .hero[data-phase="overtime"] {
   --hero-accent: #ffd5af;
@@ -166,10 +166,6 @@ button svg {
   letter-spacing: 1px;
   margin: 3px 0;
 }
-.hero-copy p {
-  font-size: 12px;
-  color: #ece2f3;
-}
 .hero-art {
   position: absolute;
   inset: 0;
@@ -181,9 +177,9 @@ button svg {
   opacity: 0.64;
 }
 .hero-clock {
-  min-width: 194px;
+  min-width: 164px;
   flex: 0 0 auto;
-  padding: 9px 15px;
+  padding: 5px 12px;
   border-radius: 13px;
   border: 1px solid #ffffff3b;
   background: #231a3bc7;
@@ -199,19 +195,19 @@ button svg {
 }
 .hero-clock-label .tiny-dot { background: currentColor; }
 .hero-clock-value {
-  font-size: 33px;
+  font-size: 29px;
   font-weight: 650;
   line-height: 1.25;
   font-variant-numeric: tabular-nums;
 }
 .hero-clock-value.day-off {
   font-size: 24px;
-  line-height: 41px;
+  line-height: 36px;
 }
 .workspace-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 22px;
+  grid-template-columns: minmax(0, 1fr) 216px;
+  gap: 14px;
   align-items: start;
 }
 .settings-card,
@@ -223,7 +219,7 @@ button svg {
   box-shadow: 0 4px 16px #3e235708;
 }
 .settings-card {
-  padding: 18px 24px 0;
+  padding: 12px 16px 0;
 }
 .section-heading {
   display: flex;
@@ -240,24 +236,12 @@ button svg {
 .section-heading h2 svg {
   color: #765aa8;
 }
-.section-heading p {
-  font-size: 11px;
-  color: #6e637d;
-  margin-top: 5px;
-}
-.small-label {
-  font-size: 10px;
-  color: #654d90;
-  background: #f0e9f9;
-  padding: 4px 8px;
-  border-radius: 5px;
-}
 .time-fields {
   display: grid;
   grid-template-columns: 1fr 25px 1fr;
   align-items: end;
   gap: 10px;
-  margin-top: 16px;
+  margin-top: 10px;
 }
 label,
 legend {
@@ -267,15 +251,15 @@ legend {
 .time-fields label {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .time-fields input {
   width: 100%;
-  padding: 8px 12px;
+  padding: 5px 9px;
   border: 1px solid #e3d9ed;
   background: #faf7fd;
   border-radius: 9px;
-  font-size: 21px;
+  font-size: 19px;
   letter-spacing: 1px;
   line-height: 1.3;
   font-variant-numeric: tabular-nums;
@@ -284,7 +268,7 @@ legend {
 }
 .time-separator {
   text-align: center;
-  padding-bottom: 14px;
+  padding-bottom: 9px;
   color: #726580;
   font-size: 12px;
 }
@@ -292,13 +276,7 @@ legend {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: 12px 0;
-}
-.interval-row p,
-.toggle-row p {
-  font-size: 11px;
-  color: #6e637d;
-  margin-top: 3px;
+  margin: 8px 0;
 }
 .number-field {
   display: flex;
@@ -349,7 +327,7 @@ legend {
 .divider {
   height: 1px;
   background: #eee7f4;
-  margin: 12px 0;
+  margin: 8px 0;
 }
 .message-label {
   display: flex;
@@ -373,11 +351,16 @@ textarea {
   font-size: 12px;
   line-height: 1.7;
 }
+.settings-toggles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 4px;
+}
 .toggle-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 10px;
 }
 .option-icon {
   display: grid;
@@ -388,7 +371,7 @@ textarea {
   background: #f1e9f9;
   border-radius: 8px;
 }
-.toggle-row > div {
+.toggle-row > label {
   flex: 1;
 }
 .switch {
@@ -422,8 +405,8 @@ textarea {
   transform: translateX(14px);
 }
 .form-footer {
-  margin-top: 14px;
-  padding: 12px 0;
+  margin-top: 9px;
+  padding: 9px 0;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -468,10 +451,10 @@ textarea {
 .sidebar {
   display: flex;
   flex-direction: column;
-  gap: 17px;
+  gap: 10px;
 }
 .status-card {
-  padding: 19px;
+  padding: 13px;
   background: #f5edf9;
   border-color: #e9ddf1;
 }
@@ -502,10 +485,10 @@ textarea {
   background: #b09c7c;
 }
 .next-time {
-  font-size: 43px;
+  font-size: 34px;
   letter-spacing: 2px;
   line-height: 1.1;
-  margin-top: 14px;
+  margin-top: 7px;
   font-weight: 500;
   color: #362751;
   font-variant-numeric: tabular-nums;
@@ -514,12 +497,12 @@ textarea {
 .countdown {
   font-size: 11px;
   color: #6e637d;
-  margin-top: 9px;
+  margin-top: 4px;
 }
 .status-line {
   height: 1px;
   background: #e4d7ee;
-  margin: 14px 0 12px;
+  margin: 9px 0;
 }
 .pause-button {
   background: #fff9;
@@ -533,14 +516,8 @@ textarea {
 .pause-button:hover:not(:disabled) {
   background: #fff;
 }
-.reset-note {
-  font-size: 9px;
-  color: #6e637d;
-  margin-top: 9px;
-  text-align: center;
-}
 .preview-card {
-  padding: 17px 19px;
+  padding: 11px 13px;
 }
 .preview-card h3 {
   font-size: 13px;
@@ -553,9 +530,9 @@ textarea {
   font-size: 11px;
   color: #6e637d;
   line-height: 1.9;
-  margin: 5px 0 12px;
+  margin: 3px 0 7px;
 }
-.widget-card .secondary { background: #f3ecfa; }
+.widget-card .secondary { margin-top: 7px; background: #f3ecfa; }
 .widget-card .secondary:hover:not(:disabled) { background: #ede1f8; }
 .full-width {
   width: 100%;
@@ -573,7 +550,7 @@ textarea {
   justify-content: space-between;
   color: #6e637d;
   font-size: 10px;
-  margin-top: 17px;
+  margin-top: 10px;
 }
 .page-footer > span:first-child {
   display: flex;
@@ -639,9 +616,11 @@ textarea {
 }
 .reminder-shell {
   height: 100vh;
-  overflow: auto;
-  padding: 18px 24px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  overflow: hidden;
+  padding: 10px 13px;
   border: 1px solid #e6d8ee;
   background:
     radial-gradient(ellipse at 50% 5%, #ffe0c8, transparent 63%),
@@ -652,50 +631,47 @@ textarea {
   align-items: center;
   justify-content: space-between;
 }
-.brand-mini {
+.reminder-title {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: #654d80;
-}
-.reminder-symbol {
-  width: 53px;
-  height: 53px;
-  display: grid;
-  place-items: center;
-  background: linear-gradient(145deg, #ffecd5, #f8d0ba);
-  border: 1px solid #edc6af;
-  color: #8b5229;
-  margin: 13px auto 11px;
-  border-radius: 18px;
-}
-.reminder-title {
-  font-size: 20px;
+  gap: 7px;
+  font-size: 15px;
   font-weight: 650;
   color: #37254e;
   letter-spacing: 0.4px;
 }
+.reminder-title svg { color: #8b5229; flex-shrink: 0; }
 .reminder-message {
   font-size: 12px;
   color: #695875;
-  margin: 9px 0 18px;
-  line-height: 1.75;
-  max-height: 63px;
+  margin: 0;
+  line-height: 1.55;
+  min-height: 0;
+  flex: 1;
   overflow: auto;
   overflow-wrap: anywhere;
 }
 .reminder-buttons {
   display: flex;
-  gap: 9px;
-  justify-content: center;
+  gap: 7px;
+  flex-shrink: 0;
 }
 .reminder-buttons button {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.reminder-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #695875;
   font-size: 11px;
-  padding: 10px 12px;
 }
 .reminder-settings {
-  margin: 13px auto 0;
+  align-self: flex-start;
+  flex-shrink: 0;
+  padding: 0 2px;
 }
 .reminder-error {
   font-size: 10px;
@@ -704,16 +680,16 @@ textarea {
 .reminder-buttons .secondary {
   background: #fff8;
 }
-@media (max-width: 900px) {
+@media (max-width: 760px) {
   .app-shell {
-    padding: 22px 24px 16px;
+    padding: 12px 15px 9px;
   }
   .workspace-grid {
-    grid-template-columns: minmax(0, 1fr) 245px;
-    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) 192px;
+    gap: 10px;
   }
   .settings-card {
-    padding: 20px 20px 0;
+    padding: 11px 13px 0;
   }
   .hero-art {
     opacity: 0.55;
@@ -724,15 +700,11 @@ textarea {
   .brand h1 span {
     display: none;
   }
-  .hero {
-    padding: 18px 23px;
-    min-height: 110px;
-  }
   .next-time {
-    font-size: 38px;
+    font-size: 31px;
   }
   .status-card {
-    padding: 18px;
+    padding: 11px;
   }
   .day-buttons {
     gap: 6px;

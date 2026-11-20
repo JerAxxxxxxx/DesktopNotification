@@ -16,8 +16,19 @@ test("counts down to the configured local off-work time", () => {
   });
   assert.deepEqual(
     getWorkCountdown({ ...settings, startTime: "17:30" }, local(18, 17, 29, 59, 950)),
-    { state: "counting", value: "00:00:01" },
+    { state: "soon", value: "00:00:01" },
   );
+});
+
+test("highlights the last 30 minutes before the configured end time", () => {
+  assert.deepEqual(getWorkCountdown(settings, local(18, 17, 29, 59)), {
+    state: "counting",
+    value: "00:30:01",
+  });
+  assert.deepEqual(getWorkCountdown(settings, local(18, 17, 30)), {
+    state: "soon",
+    value: "00:30:00",
+  });
 });
 
 test("switches to overtime at the exact off-work time", () => {

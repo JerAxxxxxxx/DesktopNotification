@@ -203,7 +203,7 @@ mod tests {
             timestamp: 151200,
             offset: 0,
         };
-        assert!(!scheduler.tick(&config, now, true));
+        assert!(!scheduler.tick(&config, now, || true));
         assert!(scheduler.tick(
             &config,
             Clock {
@@ -212,7 +212,7 @@ mod tests {
                 timestamp: 237600,
                 ..now
             },
-            true
+            || true
         ));
     }
 

@@ -1,11 +1,17 @@
 mod model;
 mod platform;
+mod reminder_lifetime;
 mod scheduler;
 mod storage;
 
 use model::{Daily, Saved, Settings, Snapshot, clock};
+use reminder_lifetime::{ReminderCard, ReminderLifetime};
 use scheduler::Scheduler;
-use std::{path::PathBuf, sync::Mutex, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 use tauri::{
     Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder,
     menu::{Menu, MenuItem},
@@ -32,13 +38,17 @@ impl Runtime {
         storage::save(&self.path, &data).map_err(|e| format!("无法保存设置：{e}"))
     }
     fn snapshot(&self) -> Snapshot {
-        let now = clock();
+        self.snapshot_at(clock())
+    }
+
+    fn snapshot_at(&self, now: scheduler::Clock) -> Snapshot {
         let phase = if self.scheduler.paused {
             "paused"
         } else if !self.settings.days[now.weekday] {
             "dayOff"
-        } else if now.second
-            >= u32::from(self.settings.schedule().expect("validated settings").end) * 60
+        } else if self.scheduler.next.is_none()
+            || now.second
+                >= u32::from(self.settings.schedule().expect("validated settings").end) * 60
         {
             "finished"
         } else if self.scheduler.next.is_some_and(|n| n <= now.timestamp) {
@@ -59,8 +69,11 @@ impl Runtime {
 }
 
 type AppState = Mutex<Runtime>;
+
 const COUNTDOWN_WIDTH: f64 = 164.;
 const COUNTDOWN_HEIGHT: f64 = 52.;
+const REMINDER_WIDTH: f64 = 320.;
+const REMINDER_HEIGHT: f64 = 164.;
 
 fn show_settings(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
@@ -71,6 +84,9 @@ fn show_settings(app: &tauri::AppHandle) {
 }
 
 fn hide_reminder(app: &tauri::AppHandle) {
+    if let Ok(mut lifetime) = app.state::<Mutex<ReminderLifetime>>().lock() {
+        lifetime.clear();
+    }
     if let Some(window) = app.get_webview_window("reminder") {
         let _ = window.hide();
     }
@@ -140,30 +156,61 @@ fn move_countdown(window: tauri::WebviewWindow, x: f64, y: f64) -> Result<(), St
         .map_err(|e| e.to_string())
 }
 
-fn show_reminder(app: &tauri::AppHandle, sound: bool) -> tauri::Result<()> {
+fn show_reminder(app: &tauri::AppHandle, settings: &Settings, preview: bool) -> Result<(), String> {
+    let state = app.state::<Mutex<ReminderLifetime>>();
+    let mut lifetime = state.lock().map_err(|e| e.to_string())?;
+    if lifetime.card().is_some_and(|card| !card.preview) {
+        return Err("正式提醒正在显示，请稍后再预览".into());
+    }
     let window = app
         .get_webview_window("reminder")
-        .ok_or(tauri::Error::WindowNotFound)?;
+        .ok_or("无法找到提醒窗口")?;
     let monitor = app
         .get_webview_window("main")
         .and_then(|w| w.current_monitor().ok().flatten())
-        .or(window.primary_monitor()?);
+        .or(window.primary_monitor().map_err(|e| e.to_string())?);
     if let Some(monitor) = monitor {
         let scale = monitor.scale_factor();
         let area = monitor.work_area();
         let size = &area.size;
         let pos = &area.position;
-        window.set_position(tauri::PhysicalPosition::new(
-            pos.x + (f64::from(size.width) - 440. * scale).max(0.) as i32,
-            pos.y + (f64::from(size.height) - 340. * scale).max(0.) as i32,
-        ))?;
+        window
+            .set_position(tauri::PhysicalPosition::new(
+                pos.x + (f64::from(size.width) - (REMINDER_WIDTH + 20.) * scale).max(0.) as i32,
+                pos.y + (f64::from(size.height) - (REMINDER_HEIGHT + 20.) * scale).max(0.) as i32,
+            ))
+            .map_err(|e| e.to_string())?;
     }
-    window.show()?;
-    app.emit("reminder-shown", ())?;
-    if sound {
+    window.show().map_err(|e| e.to_string())?;
+    let deadline = lifetime.show(Instant::now(), settings, preview);
+    if let Err(error) = app.emit("reminder-shown", lifetime.card()) {
+        lifetime.clear();
+        let _ = window.hide();
+        return Err(error.to_string());
+    }
+    drop(lifetime);
+    schedule_reminder_hide(app, deadline);
+    if settings.sound {
         platform::play_sound();
     }
     Ok(())
+}
+
+fn schedule_reminder_hide(app: &tauri::AppHandle, deadline: Instant) {
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(deadline.saturating_duration_since(Instant::now()));
+        let handler = app.clone();
+        let _ = app.run_on_main_thread(move || {
+            let should_hide = handler
+                .state::<Mutex<ReminderLifetime>>()
+                .lock()
+                .is_ok_and(|lifetime| lifetime.should_hide(deadline, Instant::now()));
+            if should_hide {
+                hide_reminder(&handler);
+            }
+        });
+    });
 }
 
 #[tauri::command]
@@ -195,7 +242,7 @@ fn save_settings(
     runtime.settings = settings;
     runtime.scheduler.reconfigure();
     let schedule = runtime.settings.schedule()?;
-    runtime.scheduler.tick(&schedule, clock(), false);
+    runtime.scheduler.tick(&schedule, clock(), || false);
     if let Err(error) = runtime.persist() {
         runtime.settings = previous_settings;
         runtime.scheduler = previous_schedule;
@@ -247,8 +294,8 @@ fn reminder_action(app: tauri::AppHandle, action: String) -> Result<Snapshot, St
 
 #[tauri::command]
 fn test_reminder(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    let sound = state.lock().map_err(|e| e.to_string())?.settings.sound;
-    show_reminder(&app, sound).map_err(|e| e.to_string())
+    let settings = state.lock().map_err(|e| e.to_string())?.settings.clone();
+    show_reminder(&app, &settings, true)
 }
 
 #[tauri::command]
@@ -257,8 +304,24 @@ fn open_settings(app: tauri::AppHandle) {
 }
 
 #[tauri::command]
-fn dismiss_reminder(app: tauri::AppHandle) {
-    hide_reminder(&app);
+fn get_reminder_card(
+    state: State<'_, Mutex<ReminderLifetime>>,
+) -> Result<Option<ReminderCard>, String> {
+    Ok(state.lock().map_err(|e| e.to_string())?.card().cloned())
+}
+
+#[tauri::command]
+fn card_action(app: tauri::AppHandle, id: u32, action: String) -> Result<(), String> {
+    let state = app.state::<Mutex<ReminderLifetime>>();
+    let action = state.lock().map_err(|e| e.to_string())?.action(id, &action);
+    match action {
+        None => Ok(()),
+        Some("dismiss") => {
+            hide_reminder(&app);
+            Ok(())
+        }
+        Some(action) => change_reminder(&app, action).map(|_| ()),
+    }
 }
 
 fn log_error(app: &tauri::AppHandle, message: String) {
@@ -276,6 +339,55 @@ fn log_error(app: &tauri::AppHandle, message: String) {
         {
             let _ = writeln!(file, "{} {message}", chrono::Local::now().to_rfc3339());
         }
+    }
+}
+
+// Run the check and the actual display together on the window thread so a
+// queued check observes any intervening pause, settings change or cutoff.
+fn poll_reminders(app: &tauri::AppHandle) {
+    let state = app.state::<AppState>();
+    let Ok(mut runtime) = state.lock() else {
+        return;
+    };
+    let Ok(schedule) = runtime.settings.schedule() else {
+        return;
+    };
+    let Runtime {
+        scheduler,
+        settings,
+        ..
+    } = &mut *runtime;
+    let before = Daily::from(&*scheduler);
+    let mut delivery_error = None;
+    scheduler.tick(&schedule, clock(), || {
+        if !platform::desktop_available() {
+            return false;
+        }
+        let result = show_reminder(app, settings, false);
+        delivery_error = result.err();
+        delivery_error.is_none()
+    });
+    if (
+        before.date,
+        before.paused,
+        before.next,
+        before.last_shown,
+        before.last_offset,
+    ) != (
+        scheduler.date,
+        scheduler.paused,
+        scheduler.next,
+        scheduler.last_shown,
+        scheduler.last_offset,
+    ) && let Err(error) = runtime.persist()
+    {
+        runtime.warning = Some(error);
+    }
+    if let Some(error) = delivery_error
+        && runtime.warning.as_ref() != Some(&error)
+    {
+        drop(runtime);
+        log_error(app, error);
     }
 }
 
@@ -298,7 +410,8 @@ pub fn run() {
             reminder_action,
             test_reminder,
             open_settings,
-            dismiss_reminder
+            card_action,
+            get_reminder_card
         ])
         .setup(|app| {
             let path = app.path().app_data_dir()?.join("settings.json");
@@ -338,10 +451,11 @@ pub fn run() {
                 Err(error) => runtime.warning = Some(format!("无法读取自动启动状态：{error}")),
             }
             let schedule = runtime.settings.schedule()?;
-            runtime.scheduler.tick(&schedule, clock(), false);
+            runtime.scheduler.tick(&schedule, clock(), || false);
             runtime.persist()?;
             let countdown_visible = runtime.countdown_visible;
             app.manage(Mutex::new(runtime));
+            app.manage(Mutex::new(ReminderLifetime::default()));
 
             // Prepare the hidden card during setup so synchronous commands never
             // create WebViews while the UI thread is servicing IPC.
@@ -351,7 +465,7 @@ pub fn run() {
                 WebviewUrl::App("index.html?view=reminder".into()),
             )
             .title("下班啦 · 提醒")
-            .inner_size(420., 320.)
+            .inner_size(REMINDER_WIDTH, REMINDER_HEIGHT)
             .resizable(false)
             .decorations(false)
             .always_on_top(true)
@@ -406,13 +520,8 @@ pub fn run() {
                         }
                     }
                     "test" => {
-                        let sound = app
-                            .state::<AppState>()
-                            .lock()
-                            .map(|r| r.settings.sound)
-                            .unwrap_or(false);
-                        if let Err(e) = show_reminder(app, sound) {
-                            log_error(app, e.to_string());
+                        if let Err(error) = test_reminder(app.clone(), app.state()) {
+                            log_error(app, error);
                         }
                     }
                     "pause" | "resume" => {
@@ -443,52 +552,17 @@ pub fn run() {
             std::thread::spawn(move || {
                 loop {
                     std::thread::sleep(Duration::from_secs(2));
-                    let card_open = handle
-                        .get_webview_window("reminder")
-                        .is_some_and(|w| w.is_visible().unwrap_or(false));
-                    let show = {
-                        let state = handle.state::<AppState>();
-                        let mut runtime = match state.lock() {
-                            Ok(r) => r,
-                            Err(_) => continue,
-                        };
-                        let schedule = match runtime.settings.schedule() {
-                            Ok(c) => c,
-                            Err(_) => continue,
-                        };
-                        let before = (
-                            runtime.scheduler.date,
-                            runtime.scheduler.paused,
-                            runtime.scheduler.next,
-                            runtime.scheduler.last_shown,
-                            runtime.scheduler.last_offset,
-                        );
-                        let show = runtime.scheduler.tick(
-                            &schedule,
-                            clock(),
-                            !card_open && platform::desktop_available(),
-                        );
-                        if before
-                            != (
-                                runtime.scheduler.date,
-                                runtime.scheduler.paused,
-                                runtime.scheduler.next,
-                                runtime.scheduler.last_shown,
-                                runtime.scheduler.last_offset,
-                            )
-                            && let Err(error) = runtime.persist()
-                        {
-                            runtime.warning = Some(error);
-                        }
-                        show.then_some(runtime.settings.sound)
-                    };
-                    if let Some(sound) = show {
-                        let app = handle.clone();
-                        let _ = handle.run_on_main_thread(move || {
-                            if let Err(e) = show_reminder(&app, sound) {
-                                log_error(&app, e.to_string());
-                            }
-                        });
+                    let app = handle.clone();
+                    let (done, finished) = std::sync::mpsc::channel();
+                    if handle
+                        .run_on_main_thread(move || {
+                            poll_reminders(&app);
+                            let _ = done.send(());
+                        })
+                        .is_err()
+                        || finished.recv().is_err()
+                    {
+                        break;
                     }
                 }
             });
@@ -503,6 +577,8 @@ pub fn run() {
                     {
                         log_error(window.app_handle(), error);
                     }
+                } else if window.label() == "reminder" {
+                    hide_reminder(window.app_handle());
                 } else {
                     let _ = window.hide();
                 }
@@ -510,4 +586,39 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("无法启动下班啦");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn last_reminder_of_the_day_finishes_the_schedule() {
+        let mut runtime = Runtime {
+            settings: Settings {
+                start_time: "00:00".into(),
+                end_time: "23:59".into(),
+                interval_minutes: 1440,
+                days: [true; 7],
+                ..Settings::default()
+            },
+            scheduler: Scheduler::default(),
+            countdown_visible: true,
+            warning: None,
+            path: PathBuf::new(),
+        };
+        let midnight = scheduler::Clock {
+            date: 1,
+            weekday: 0,
+            second: 0,
+            timestamp: 86400,
+            offset: 0,
+        };
+        assert!(
+            runtime
+                .scheduler
+                .tick(&runtime.settings.schedule().unwrap(), midnight, || true)
+        );
+        assert_eq!(runtime.snapshot_at(midnight).phase, "finished");
+    }
 }

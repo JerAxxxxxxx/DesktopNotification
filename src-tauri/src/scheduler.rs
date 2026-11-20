@@ -52,7 +52,7 @@ pub struct Scheduler {
 }
 
 impl Scheduler {
-    pub fn tick(&mut self, config: &Schedule, now: Clock, can_show: bool) -> bool {
+    pub fn tick(&mut self, config: &Schedule, now: Clock, deliver: impl FnOnce() -> bool) -> bool {
         if self.date != Some(now.date) {
             *self = Self {
                 date: Some(now.date),
@@ -79,7 +79,7 @@ impl Scheduler {
                 .map_or(start, |last| (last + interval).max(start))
         });
         self.next = (due < end).then_some(due.max(start));
-        if !can_show || self.next.is_none_or(|next| now.timestamp < next) {
+        if self.next.is_none_or(|next| now.timestamp < next) || !deliver() {
             return false;
         }
         self.last_shown = Some(now.timestamp);
@@ -96,10 +96,10 @@ impl Scheduler {
         self.paused = false;
         self.next = None;
         self.last_shown = None;
-        self.tick(config, now, false);
+        self.tick(config, now, || false);
     }
     pub fn snooze(&mut self, config: &Schedule, now: Clock) {
-        self.tick(config, now, false);
+        self.tick(config, now, || false);
         if self.paused || !config.days[now.weekday] {
             return;
         }
@@ -129,56 +129,67 @@ mod tests {
     }
 
     #[test]
+    fn failed_delivery_retries_on_the_next_check() {
+        let mut scheduler = Scheduler::default();
+        let config = Schedule::default();
+        assert!(!scheduler.tick(&config, at(1, 0, 18, 0), || false));
+        assert!(scheduler.tick(&config, at(1, 0, 18, 1), || true));
+        assert_eq!(scheduler.next, Some(at(1, 0, 18, 11).timestamp));
+        scheduler.tick(&config, at(1, 0, 18, 2), || {
+            panic!("attempted early delivery")
+        });
+    }
+    #[test]
     fn first_reminder_fires_at_start_and_not_twice() {
         let c = Schedule::default();
         let mut s = Scheduler::default();
-        assert!(!s.tick(&c, at(1, 0, 17, 59), true));
-        assert!(s.tick(&c, at(1, 0, 18, 0), true));
-        assert!(!s.tick(&c, at(1, 0, 18, 0), true));
+        assert!(!s.tick(&c, at(1, 0, 17, 59), || true));
+        assert!(s.tick(&c, at(1, 0, 18, 0), || true));
+        assert!(!s.tick(&c, at(1, 0, 18, 0), || true));
     }
     #[test]
     fn repeats_only_after_the_interval() {
         let c = Schedule::default();
         let mut s = Scheduler::default();
-        assert!(s.tick(&c, at(1, 0, 18, 0), true));
-        assert!(!s.tick(&c, at(1, 0, 18, 9), true));
-        assert!(s.tick(&c, at(1, 0, 18, 10), true));
+        assert!(s.tick(&c, at(1, 0, 18, 0), || true));
+        assert!(!s.tick(&c, at(1, 0, 18, 9), || true));
+        assert!(s.tick(&c, at(1, 0, 18, 10), || true));
     }
     #[test]
     fn missed_reminders_merge_into_one_after_resume() {
         let c = Schedule::default();
         let mut s = Scheduler::default();
-        s.tick(&c, at(1, 0, 18, 0), true);
-        assert!(!s.tick(&c, at(1, 0, 18, 30), false));
-        assert!(s.tick(&c, at(1, 0, 18, 35), true));
+        s.tick(&c, at(1, 0, 18, 0), || true);
+        assert!(!s.tick(&c, at(1, 0, 18, 30), || false));
+        assert!(s.tick(&c, at(1, 0, 18, 35), || true));
         assert_eq!(s.next, Some(153900)); // day 1, 18:45
-        assert!(!s.tick(&c, at(1, 0, 18, 35), true));
+        assert!(!s.tick(&c, at(1, 0, 18, 35), || true));
     }
     #[test]
     fn pause_survives_same_day_but_resets_next_day() {
         let c = Schedule::default();
         let mut s = Scheduler::default();
         s.pause(at(1, 0, 17, 0));
-        assert!(!s.tick(&c, at(1, 0, 18, 0), true));
-        assert!(s.tick(&c, at(2, 1, 18, 0), true));
+        assert!(!s.tick(&c, at(1, 0, 18, 0), || true));
+        assert!(s.tick(&c, at(2, 1, 18, 0), || true));
     }
     #[test]
     fn no_reminder_on_weekends_or_at_cutoff() {
         let c = Schedule::default();
         let mut s = Scheduler::default();
-        assert!(!s.tick(&c, at(1, 5, 18, 0), true));
+        assert!(!s.tick(&c, at(1, 5, 18, 0), || true));
         assert_eq!(s.next, None);
-        assert!(!s.tick(&c, at(2, 1, 21, 0), true));
+        assert!(!s.tick(&c, at(2, 1, 21, 0), || true));
         assert_eq!(s.next, None);
     }
     #[test]
     fn snooze_moves_next_reminder_and_respects_cutoff() {
         let c = Schedule::default();
         let mut s = Scheduler::default();
-        s.tick(&c, at(1, 0, 18, 0), true);
+        s.tick(&c, at(1, 0, 18, 0), || true);
         s.snooze(&c, at(1, 0, 18, 5));
-        assert!(!s.tick(&c, at(1, 0, 18, 10), true));
-        assert!(s.tick(&c, at(1, 0, 18, 15), true));
+        assert!(!s.tick(&c, at(1, 0, 18, 10), || true));
+        assert!(s.tick(&c, at(1, 0, 18, 15), || true));
         s.snooze(&c, at(1, 0, 20, 55));
         assert_eq!(s.next, None);
     }
@@ -188,27 +199,27 @@ mod tests {
         let mut s = Scheduler::default();
         s.pause(at(1, 0, 18, 0));
         s.resume(&c, at(1, 0, 18, 5));
-        assert!(s.tick(&c, at(1, 0, 18, 5), true));
+        assert!(s.tick(&c, at(1, 0, 18, 5), || true));
     }
     #[test]
     fn moving_clock_back_does_not_repeat_previous_reminder() {
         let c = Schedule::default();
         let mut s = Scheduler::default();
-        s.tick(&c, at(1, 0, 18, 10), true);
-        assert!(!s.tick(&c, at(1, 0, 18, 0), true));
-        assert!(!s.tick(&c, at(1, 0, 18, 10), true));
-        assert!(s.tick(&c, at(1, 0, 18, 20), true));
+        s.tick(&c, at(1, 0, 18, 10), || true);
+        assert!(!s.tick(&c, at(1, 0, 18, 0), || true));
+        assert!(!s.tick(&c, at(1, 0, 18, 10), || true));
+        assert!(s.tick(&c, at(1, 0, 18, 20), || true));
     }
     #[test]
     fn reconfigure_applies_new_start_time_without_repeating() {
         let mut c = Schedule::default();
         let mut s = Scheduler::default();
-        s.tick(&c, at(1, 0, 17, 0), true);
+        s.tick(&c, at(1, 0, 17, 0), || true);
         c.start = 1020;
         s.reconfigure();
-        assert!(s.tick(&c, at(1, 0, 17, 0), true));
+        assert!(s.tick(&c, at(1, 0, 17, 0), || true));
         s.reconfigure();
-        assert!(!s.tick(&c, at(1, 0, 17, 0), true));
+        assert!(!s.tick(&c, at(1, 0, 17, 0), || true));
     }
     #[test]
     fn invalid_intervals_times_and_empty_days_are_rejected() {

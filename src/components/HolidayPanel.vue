@@ -50,7 +50,7 @@ function dateRange(start: string, end: string) {
 
 <style scoped>
 .holiday-panel {
-  margin-bottom: 18px;
+  margin-bottom: 12px;
   border: 1px solid #e7dfee;
   border-radius: 15px;
   background: #fff;
@@ -60,8 +60,8 @@ function dateRange(start: string, end: string) {
   display: flex;
   align-items: center;
   gap: 11px;
-  min-height: 62px;
-  padding: 9px 15px;
+  min-height: 49px;
+  padding: 6px 12px;
   cursor: pointer;
   list-style: none;
   border-radius: 14px;
@@ -72,8 +72,8 @@ function dateRange(start: string, end: string) {
 .holiday-icon {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 31px;
+  height: 31px;
   flex: 0 0 auto;
   color: #65479c;
   background: #f1e9f9;
