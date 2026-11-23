@@ -188,6 +188,12 @@ onUnmounted(() => {
           <div>
             <h2><Icon name="clock" /> 提醒安排</h2>
           </div>
+          <label class="sedentary-setting">久坐提醒
+            <select v-model.number="settings.sedentaryMinutes" aria-label="久坐提醒间隔">
+              <option :value="0">关闭</option>
+              <option v-for="minutes in [30, 45, 60]" :key="minutes" :value="minutes">每 {{ minutes }} 分钟</option>
+            </select>
+          </label>
         </div>
         <div class="time-fields">
           <label
@@ -334,7 +340,7 @@ onUnmounted(() => {
     <footer class="page-footer">
       <span
         ><Icon name="info" :size="14" />关闭窗口后，提醒仍在托盘中运行。</span
-      ><span>下班啦 <span class="footer-dot">·</span> v0.4.3</span>
+      ><span>下班啦 <span class="footer-dot">·</span> v0.5.1</span>
     </footer>
     <Transition name="toast"
       ><div v-if="toast" class="toast-message" role="status">

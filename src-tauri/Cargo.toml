@@ -1,6 +1,6 @@
 [package]
 name = "offwork"
-version = "0.4.3"
+version = "0.5.1"
 description = "A quiet reminder to call it a day"
 license = "MIT"
 authors = ["hugo"]

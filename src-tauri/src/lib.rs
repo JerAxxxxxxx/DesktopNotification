@@ -2,11 +2,13 @@ mod model;
 mod platform;
 mod reminder_lifetime;
 mod scheduler;
+mod sedentary;
 mod storage;
 
 use model::{Daily, Saved, Settings, Snapshot, clock};
-use reminder_lifetime::{ReminderCard, ReminderLifetime};
+use reminder_lifetime::{CardKind, ReminderCard, ReminderLifetime};
 use scheduler::Scheduler;
+use sedentary::SedentaryTimer;
 use std::{
     path::PathBuf,
     sync::Mutex,
@@ -23,6 +25,8 @@ struct Runtime {
     settings: Settings,
     countdown_visible: bool,
     scheduler: Scheduler,
+    sedentary: SedentaryTimer,
+    waiting_for_desktop: Option<i64>,
     warning: Option<String>,
     path: PathBuf,
 }
@@ -156,10 +160,17 @@ fn move_countdown(window: tauri::WebviewWindow, x: f64, y: f64) -> Result<(), St
         .map_err(|e| e.to_string())
 }
 
-fn show_reminder(app: &tauri::AppHandle, settings: &Settings, preview: bool) -> Result<(), String> {
+fn show_reminder(
+    app: &tauri::AppHandle,
+    settings: &Settings,
+    kind: CardKind,
+) -> Result<(), String> {
     let state = app.state::<Mutex<ReminderLifetime>>();
     let mut lifetime = state.lock().map_err(|e| e.to_string())?;
-    if lifetime.card().is_some_and(|card| !card.preview) {
+    if lifetime
+        .card()
+        .is_some_and(|card| card.kind == CardKind::Offwork)
+    {
         return Err("正式提醒正在显示，请稍后再预览".into());
     }
     let window = app
@@ -182,7 +193,7 @@ fn show_reminder(app: &tauri::AppHandle, settings: &Settings, preview: bool) -> 
             .map_err(|e| e.to_string())?;
     }
     window.show().map_err(|e| e.to_string())?;
-    let deadline = lifetime.show(Instant::now(), settings, preview);
+    let deadline = lifetime.show(Instant::now(), settings, kind);
     if let Err(error) = app.emit("reminder-shown", lifetime.card()) {
         lifetime.clear();
         let _ = window.hide();
@@ -242,7 +253,7 @@ fn save_settings(
     runtime.settings = settings;
     runtime.scheduler.reconfigure();
     let schedule = runtime.settings.schedule()?;
-    runtime.scheduler.tick(&schedule, clock(), || false);
+    runtime.scheduler.tick(&schedule, clock(), |_| false);
     if let Err(error) = runtime.persist() {
         runtime.settings = previous_settings;
         runtime.scheduler = previous_schedule;
@@ -256,6 +267,10 @@ fn save_settings(
             Err(e) => format!("{error}；自动启动恢复失败：{e}"),
         });
     }
+    timing_log(
+        &runtime.path,
+        format_args!("设置已保存，下班时间 {}", runtime.settings.start_time),
+    );
     runtime.warning = None;
     let snapshot = runtime.snapshot();
     drop(runtime);
@@ -280,6 +295,7 @@ fn change_reminder(app: &tauri::AppHandle, action: &str) -> Result<Snapshot, Str
         runtime.scheduler = previous;
         return Err(error);
     }
+    timing_log(&runtime.path, format_args!("提醒操作 {action}"));
     let snapshot = runtime.snapshot();
     drop(runtime);
     hide_reminder(app);
@@ -295,7 +311,7 @@ fn reminder_action(app: tauri::AppHandle, action: String) -> Result<Snapshot, St
 #[tauri::command]
 fn test_reminder(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let settings = state.lock().map_err(|e| e.to_string())?.settings.clone();
-    show_reminder(&app, &settings, true)
+    show_reminder(&app, &settings, CardKind::Preview)
 }
 
 #[tauri::command]
@@ -321,6 +337,25 @@ fn card_action(app: tauri::AppHandle, id: u32, action: String) -> Result<(), Str
             Ok(())
         }
         Some(action) => change_reminder(&app, action).map(|_| ()),
+    }
+}
+
+fn timing_log(settings_path: &std::path::Path, message: std::fmt::Arguments<'_>) {
+    use std::io::Write;
+    let path = settings_path.with_file_name("reminder-timing.log");
+    let full = path.metadata().is_ok_and(|m| m.len() >= 128 * 1024);
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(full)
+        .append(!full)
+        .open(path)
+    {
+        let _ = writeln!(
+            file,
+            "{} {message}",
+            chrono::Local::now().format("%F %T%.3f")
+        );
     }
 }
 
@@ -354,19 +389,53 @@ fn poll_reminders(app: &tauri::AppHandle) {
     };
     let Runtime {
         scheduler,
+        sedentary,
+        path,
+        waiting_for_desktop,
         settings,
         ..
     } = &mut *runtime;
     let before = Daily::from(&*scheduler);
     let mut delivery_error = None;
-    scheduler.tick(&schedule, clock(), || {
+    let now = clock();
+    scheduler.tick(&schedule, now, |due| {
+        let scheduled = chrono::DateTime::from_timestamp(due, 0)
+            .map(|t| t.with_timezone(&chrono::Local).format("%F %T").to_string())
+            .unwrap_or_else(|| due.to_string());
         if !platform::desktop_available() {
+            if *waiting_for_desktop != Some(due) {
+                timing_log(
+                    path,
+                    format_args!("计划 {scheduled}，等待桌面解锁或恢复可用"),
+                );
+                *waiting_for_desktop = Some(due);
+            }
             return false;
         }
-        let result = show_reminder(app, settings, false);
+        let result = show_reminder(app, settings, CardKind::Offwork);
+        if result.is_ok() {
+            let gap = before
+                .last_clock
+                .map_or(0, |last| now.timestamp.saturating_sub(last));
+            timing_log(
+                path,
+                format_args!("下班卡片已显示，计划 {scheduled}，距上次检查 {gap} 秒"),
+            );
+            *waiting_for_desktop = None;
+        }
         delivery_error = result.err();
         delivery_error.is_none()
     });
+    sedentary.tick(
+        now,
+        &schedule,
+        settings.sedentary_minutes,
+        platform::desktop_available,
+        || {
+            delivery_error = show_reminder(app, settings, CardKind::Sedentary).err();
+            delivery_error.is_none()
+        },
+    );
     if (
         before.date,
         before.paused,
@@ -441,9 +510,11 @@ pub fn run() {
             };
             let mut runtime = Runtime {
                 scheduler: saved.daily.restore(),
+                sedentary: SedentaryTimer::default(),
                 settings: saved.settings,
                 countdown_visible: saved.countdown_visible,
                 path,
+                waiting_for_desktop: None,
                 warning,
             };
             match app.autolaunch().is_enabled() {
@@ -451,8 +522,12 @@ pub fn run() {
                 Err(error) => runtime.warning = Some(format!("无法读取自动启动状态：{error}")),
             }
             let schedule = runtime.settings.schedule()?;
-            runtime.scheduler.tick(&schedule, clock(), || false);
+            runtime.scheduler.tick(&schedule, clock(), |_| false);
             runtime.persist()?;
+            timing_log(
+                &runtime.path,
+                format_args!("程序启动，下班时间 {}", runtime.settings.start_time),
+            );
             let countdown_visible = runtime.countdown_visible;
             app.manage(Mutex::new(runtime));
             app.manage(Mutex::new(ReminderLifetime::default()));
@@ -551,7 +626,15 @@ pub fn run() {
             let handle = app.handle().clone();
             std::thread::spawn(move || {
                 loop {
-                    std::thread::sleep(Duration::from_secs(2));
+                    let next = handle
+                        .state::<AppState>()
+                        .lock()
+                        .ok()
+                        .and_then(|r| r.scheduler.next);
+                    let wall_time = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default();
+                    std::thread::sleep(poll_delay(wall_time, next));
                     let app = handle.clone();
                     let (done, finished) = std::sync::mpsc::channel();
                     if handle
@@ -588,9 +671,46 @@ pub fn run() {
         .expect("无法启动下班啦");
 }
 
+fn poll_delay(wall_time: Duration, next: Option<i64>) -> Duration {
+    // Keep the fallback aligned to the clock as well: a newly saved HH:MM
+    // deadline can arrive while the worker is already asleep.
+    let phase = Duration::new(wall_time.as_secs() % 2, wall_time.subsec_nanos());
+    let heartbeat = Duration::from_secs(2) - phase;
+    next.and_then(|timestamp| u64::try_from(timestamp).ok())
+        .and_then(|seconds| Duration::from_secs(seconds).checked_sub(wall_time))
+        .filter(|delay| !delay.is_zero())
+        .map_or(heartbeat, |delay| delay.min(heartbeat))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn polling_wakes_at_the_scheduled_second_even_after_a_slow_previous_check() {
+        let before = Duration::from_millis(59_800);
+        assert_eq!(
+            before + poll_delay(before, Some(60)),
+            Duration::from_secs(60)
+        );
+        let before_repeat = Duration::from_millis(120_300);
+        assert_eq!(
+            before_repeat + poll_delay(before_repeat, Some(121)),
+            Duration::from_secs(121)
+        );
+    }
+
+    #[test]
+    fn locked_or_paused_reminders_keep_a_bounded_positive_poll_delay() {
+        let now = Duration::from_secs(60);
+        for next in [None, Some(59), Some(60), Some(3600)] {
+            assert_eq!(poll_delay(now, next), Duration::from_secs(2));
+        }
+        assert_eq!(
+            poll_delay(Duration::from_millis(59_800), None),
+            Duration::from_millis(200)
+        );
+    }
 
     #[test]
     fn last_reminder_of_the_day_finishes_the_schedule() {
@@ -603,7 +723,9 @@ mod tests {
                 ..Settings::default()
             },
             scheduler: Scheduler::default(),
+            sedentary: SedentaryTimer::default(),
             countdown_visible: true,
+            waiting_for_desktop: None,
             warning: None,
             path: PathBuf::new(),
         };
@@ -617,7 +739,7 @@ mod tests {
         assert!(
             runtime
                 .scheduler
-                .tick(&runtime.settings.schedule().unwrap(), midnight, || true)
+                .tick(&runtime.settings.schedule().unwrap(), midnight, |_| true)
         );
         assert_eq!(runtime.snapshot_at(midnight).phase, "finished");
     }

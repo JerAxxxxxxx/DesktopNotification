@@ -8,6 +8,7 @@ pub struct Settings {
     pub start_time: String,
     pub end_time: String,
     pub interval_minutes: u16,
+    pub sedentary_minutes: u16,
     pub days: [bool; 7],
     pub message: String,
     pub sound: bool,
@@ -20,6 +21,7 @@ impl Default for Settings {
             start_time: "18:00".into(),
             end_time: "21:00".into(),
             interval_minutes: 10,
+            sedentary_minutes: 0,
             days: Schedule::default().days,
             message: "今天也辛苦了，收拾一下，准备下班吧。".into(),
             sound: true,
@@ -58,6 +60,9 @@ impl Settings {
         }
         if self.message.trim().is_empty() || self.message.chars().count() > 200 {
             return Err("提醒文案需要填写 1～200 个字符".into());
+        }
+        if !matches!(self.sedentary_minutes, 0 | 30 | 45 | 60) {
+            return Err("久坐提醒间隔可选 30、45 或 60 分钟".into());
         }
         let schedule = Schedule {
             start: minutes(&self.start_time)?,
@@ -158,6 +163,7 @@ mod tests {
         let old: Saved = serde_json::from_str(r#"{"settings":{"startTime":"17:30"}}"#).unwrap();
         assert!(old.countdown_visible);
         assert_eq!(old.settings.start_time, "17:30");
+        assert_eq!(old.settings.sedentary_minutes, 0);
 
         let hidden = Saved {
             countdown_visible: false,
@@ -203,7 +209,7 @@ mod tests {
             timestamp: 151200,
             offset: 0,
         };
-        assert!(!scheduler.tick(&config, now, || true));
+        assert!(!scheduler.tick(&config, now, |_| true));
         assert!(scheduler.tick(
             &config,
             Clock {
@@ -212,7 +218,7 @@ mod tests {
                 timestamp: 237600,
                 ..now
             },
-            || true
+            |_| true
         ));
     }
 

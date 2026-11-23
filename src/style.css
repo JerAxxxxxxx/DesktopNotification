@@ -226,6 +226,15 @@ button svg {
   justify-content: space-between;
   align-items: center;
 }
+.sedentary-setting { display: flex; align-items: center; gap: 6px; }
+.sedentary-setting select {
+  font: inherit;
+  color: #503b73;
+  border: 1px solid #dfd4ea;
+  border-radius: 6px;
+  background: #faf7fd;
+  padding: 3px 4px;
+}
 .section-heading h2 {
   display: flex;
   align-items: center;

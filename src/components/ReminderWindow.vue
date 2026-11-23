@@ -7,7 +7,7 @@ import Icon from "./AppIcon.vue";
 
 interface ReminderCard {
   id: number;
-  preview: boolean;
+  kind: "offwork" | "preview" | "sedentary";
   message: string;
   intervalMinutes: number;
 }
@@ -53,14 +53,17 @@ onUnmounted(() => unlisten?.());
 <template>
   <main class="reminder-shell">
     <div class="reminder-top">
-      <h1 class="reminder-title"><Icon name="sun" :size="19" /> {{ card?.preview ? '测试提醒' : '下班时间到了' }}</h1>
+      <h1 class="reminder-title"><Icon name="sun" :size="19" /> {{ card?.kind === 'sedentary' ? '起来活动一下' : card?.kind === 'preview' ? '测试提醒' : '下班时间到了' }}</h1>
       <button class="icon-button" aria-label="关闭本次提醒" @click="run('dismiss')">
         <Icon name="close" :size="18" />
       </button>
     </div>
     <p v-if="error" class="reminder-message reminder-error" role="alert">{{ error }}</p>
     <p v-else class="reminder-message" tabindex="0">{{ card?.message ?? defaultSettings.message }}</p>
-    <div class="reminder-buttons">
+    <div v-if="card?.kind === 'sedentary'" class="reminder-buttons">
+      <button class="primary" :disabled="busy" @click="run('dismiss')">知道了</button>
+    </div>
+    <div v-else class="reminder-buttons">
       <button class="primary" :disabled="busy || !card" @click="run('pause')">
         <Icon name="check" :size="17" /> 今天不再提醒
       </button>
@@ -69,7 +72,7 @@ onUnmounted(() => unlisten?.());
       </button>
     </div>
     <div class="reminder-footer">
-      <span v-if="card?.preview">预览操作仅关闭此卡片</span>
+      <span v-if="card?.kind === 'preview'">预览操作仅关闭此卡片</span>
       <button class="text-button reminder-settings" @click="run('settings')">
         打开设置 <Icon name="arrow" :size="13" />
       </button>

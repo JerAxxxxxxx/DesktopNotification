@@ -2,6 +2,7 @@ export interface Settings {
   startTime: string;
   endTime: string;
   intervalMinutes: number;
+  sedentaryMinutes: number;
   days: boolean[];
   message: string;
   sound: boolean;
